@@ -1,6 +1,6 @@
 <template>
   <WarRoomLayout :phase="director.phase.value">
-    <!-- Cinematic Map Centerpiece -->
+    <!-- Cinematic Map Centerpiece (Fills full viewport behind UI) -->
     <SwarmMap 
       :phase="director.phase.value"
       :scenario="director.scenario"
@@ -8,9 +8,10 @@
       :arcs="director.arcs.value"
     />
 
-    <!-- Main Debug Overlay for Task Controls & Verification -->
-    <div class="debug-container">
-      <div class="debug-header glass-panel">
+    <!-- Main UI Overlay Container -->
+    <div class="war-room-overlay">
+      <!-- 1. Top White Executive Header -->
+      <div class="top-header glass-panel">
         <div class="header-left">
           <img 
             src="https://www.gstatic.com/bricks/image/720624ce-2196-48d4-9963-a31aa86bdfbc.webp" 
@@ -46,15 +47,15 @@
         </div>
       </div>
 
-      <!-- Main State & Controls Section -->
-      <div class="debug-main glass-panel">
-        <div class="phase-indicator">
+      <!-- 2. Presenter & Status Control Bar (Top Center) -->
+      <div class="executive-control-bar glass-panel">
+        <div class="control-left">
           <div class="phase-badge">
             PHASE {{ director.phase.value }}: 
             <span class="phase-name">{{ phaseNames[director.phase.value] }}</span>
           </div>
           <div class="clock-badge">
-            🕒 CLOCK: <span>{{ director.clockString.value }}</span>
+            🕒 <span>{{ director.clockString.value }}</span>
           </div>
           <div v-if="director.scenario.countdown" class="countdown-badge">
             ⏳ {{ director.scenario.countdown.label }}: 
@@ -63,67 +64,100 @@
         </div>
 
         <div class="dialogue-box">
-          <div class="dialogue-title">PRESENTER SPOKEN SCRIPT (P{{ director.phase.value }}):</div>
-          <div class="dialogue-text">"{{ director.currentDialogue.value }}"</div>
+          <span class="dialogue-label font-mono">SPEAKER SCRIPT:</span>
+          <span class="dialogue-text">"{{ director.currentDialogue.value }}"</span>
         </div>
 
-        <div class="keyboard-guide">
-          <strong>KEYBOARD CONTROLS:</strong>
-          <kbd>SPACE</kbd> Advance Phase
-          <kbd>Y</kbd> Approve (Phase 4)
-          <kbd>K</kbd> Reject (Phase 4)
-          <kbd>R</kbd> Reset
-        </div>
-
-        <div v-if="director.awaitingApproval.value" class="approval-card-preview glass-panel">
-          ⚠️ APPROVAL REQUIRED FOR: <strong>{{ director.scenario.approvalRole }}</strong>
-          <p>Plan ready. Press <kbd>Y</kbd> to authorize resolution or <kbd>K</kbd> to kill.</p>
-        </div>
-
-        <div v-if="director.isRejected.value" class="rejection-card-preview">
-          🚫 ACTION KILLED / REJECTED BY USER
-        </div>
-
-        <!-- Money HUD state -->
-        <div v-if="director.moneyState.value.visible" class="money-hud" :class="director.moneyState.value.status">
-          <div class="money-label">{{ director.moneyState.value.label }}</div>
-          <div class="money-value">{{ director.moneyState.value.value }}</div>
+        <div class="keyboard-guide font-mono">
+          <span class="key-debug-badge font-mono" title="Live physical keypress detection status">
+            KEY: <strong>{{ lastKeyPressed }}</strong>
+          </span>
+          <button class="ctrl-btn" @click="director.advancePhase()" title="Advance to next phase (Spacebar)">
+            <kbd>SPACE</kbd> Next
+          </button>
+          <button class="ctrl-btn" @click="director.approve()" title="Approve resolution (Y)">
+            <kbd>Y</kbd> Approve
+          </button>
+          <button class="ctrl-btn" @click="director.reject()" title="Reject resolution (K)">
+            <kbd>K</kbd> Reject
+          </button>
+          <button class="ctrl-btn" @click="director.reset()" title="Reset to Phase 0 (R)">
+            <kbd>R</kbd> Reset
+          </button>
         </div>
       </div>
 
-      <!-- Grid Columns: Nodes & Agent Thought Stream -->
-      <div class="debug-grid">
-        <!-- Node Health Statuses -->
-        <div class="nodes-column glass-panel">
-          <h3>GEOGRAPHIC NODES STATUS</h3>
-          <div 
-            v-for="node in Object.values(director.nodeStatuses)" 
-            :key="node.id" 
-            class="node-row"
-            :class="node.status"
-          >
-            <div class="node-info">
-              <span class="node-status-dot"></span>
-              <strong class="node-label">{{ node.label }}</strong>
-              <span class="node-role">({{ node.role }})</span>
+      <!-- 3. Main 3-Column Layout: Left Sidebar | Clear Center Globe | Right Sidebar -->
+      <div class="war-room-columns">
+        <!-- LEFT SIDEBAR: Geographic Node Health & Money HUD -->
+        <div class="sidebar-left">
+          <!-- Money HUD Card -->
+          <div v-if="director.moneyState.value.visible" class="money-hud-card glass-panel" :class="director.moneyState.value.status">
+            <div class="money-label">{{ director.moneyState.value.label }}</div>
+            <div class="money-value font-mono">{{ director.moneyState.value.value }}</div>
+          </div>
+
+          <!-- Geographic Node Health Panel -->
+          <div class="nodes-panel glass-panel">
+            <div class="panel-header">
+              <span class="header-icon">🌍</span>
+              GEOGRAPHIC NODES STATUS
             </div>
-            <div class="node-status-tag">{{ node.status.toUpperCase() }}</div>
+            <div class="nodes-list">
+              <div 
+                v-for="node in Object.values(director.nodeStatuses)" 
+                :key="node.id" 
+                class="node-row"
+                :class="node.status"
+              >
+                <div class="node-info">
+                  <span class="node-status-dot"></span>
+                  <div class="node-text">
+                    <strong class="node-label">{{ node.label }}</strong>
+                    <span class="node-role">{{ node.role }}</span>
+                  </div>
+                </div>
+                <div class="node-status-tag font-mono">{{ node.status.toUpperCase() }}</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Agent Script & Data Results Stream -->
-        <AgentThoughtStream
-          :agents="director.scenario.agents"
-          :agentStates="director.agentStates"
-          :phase="director.phase.value"
-        />
+        <!-- CENTER AREA: Wide Open Globe View + Dynamic Action Banners -->
+        <div class="center-viewport">
+          <!-- Phase 4 Approval Banner (Overlay in Center Top) -->
+          <transition name="banner-pop">
+            <div v-if="director.awaitingApproval.value" class="approval-alert-card glass-panel">
+              <div class="alert-icon">⚠️</div>
+              <div class="alert-content">
+                <div class="alert-title">HUMAN APPROVAL REQUIRED: {{ director.scenario.approvalRole }}</div>
+                <div class="alert-body">Reroute plan staged across autonomous agents. Press <kbd>Y</kbd> to authorize resolution.</div>
+              </div>
+            </div>
+          </transition>
+
+          <transition name="banner-pop">
+            <div v-if="director.isRejected.value" class="rejection-alert-card glass-panel">
+              🚫 INCIDENT REROUTE KILLED BY {{ director.scenario.approvalRole }}
+            </div>
+          </transition>
+        </div>
+
+        <!-- RIGHT SIDEBAR: Autonomous Agent Reasoning Stream -->
+        <div class="sidebar-right">
+          <AgentThoughtStream
+            :agents="director.scenario.agents"
+            :agentStates="director.agentStates"
+            :phase="director.phase.value"
+          />
+        </div>
       </div>
     </div>
   </WarRoomLayout>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { USE_3D_TILES, toggle3DTiles } from './config/index.js';
 import { useDemoDirector } from './composables/useDemoDirector.js';
 import WarRoomLayout from './layouts/WarRoomLayout.vue';
@@ -132,6 +166,7 @@ import AgentThoughtStream from './components/AgentThoughtStream.vue';
 
 const director = useDemoDirector();
 const is3DTilesOn = computed(() => USE_3D_TILES.value);
+const lastKeyPressed = ref('None (Click page to focus)');
 
 const phaseNames = [
   '0. QUIET HOURS',
@@ -143,47 +178,65 @@ const phaseNames = [
 ];
 
 function handleKeyDown(event) {
-  if (event.code === 'Space') {
-    event.preventDefault();
+  const key = (event.key || '').toLowerCase();
+  const code = event.code || '';
+  const keyCode = event.keyCode || event.which || 0;
+
+  lastKeyPressed.value = `'${event.key || 'key'}' (${code || keyCode})`;
+
+  if (code === 'Space' || key === ' ' || key === 'spacebar' || keyCode === 32) {
+    if (event.preventDefault) event.preventDefault();
     director.advancePhase();
-  } else if (event.key === 'y' || event.key === 'Y') {
+  } else if (key === 'y' || code === 'KeyY') {
+    if (event.preventDefault) event.preventDefault();
     director.approve();
-  } else if (event.key === 'k' || event.key === 'K') {
+  } else if (key === 'k' || code === 'KeyK') {
+    if (event.preventDefault) event.preventDefault();
     director.reject();
-  } else if (event.key === 'r' || event.key === 'R') {
+  } else if (key === 'r' || code === 'KeyR') {
+    if (event.preventDefault) event.preventDefault();
     director.reset();
   }
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
+  window.onkeydown = handleKeyDown;
+  document.onkeydown = handleKeyDown;
+  window.addEventListener('keydown', handleKeyDown, true);
+  document.addEventListener('keydown', handleKeyDown, true);
+
+  if (document.body) {
+    document.body.tabIndex = -1;
+    document.body.focus();
+  }
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
+  window.onkeydown = null;
+  document.onkeydown = null;
+  window.removeEventListener('keydown', handleKeyDown, true);
+  document.removeEventListener('keydown', handleKeyDown, true);
 });
 </script>
 
 <style scoped>
-.debug-container {
+.war-room-overlay {
   position: relative;
   z-index: 1;
-  padding: 24px;
-  max-width: 1600px;
-  margin: 0 auto;
+  padding: 16px 24px;
   height: 100vh;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   pointer-events: none;
 }
 
-.debug-header, .debug-main, .nodes-column, .agents-column {
+.top-header, .executive-control-bar, .sidebar-left, .sidebar-right, .approval-alert-card, .rejection-alert-card {
   pointer-events: auto;
 }
 
-.debug-header {
+/* 1. White Top Header Bar */
+.top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -303,23 +356,25 @@ onUnmounted(() => {
   color: #2563EB;
 }
 
-.debug-main {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.phase-indicator {
+/* 2. Executive Control Bar (Top Center) */
+.executive-control-bar {
   display: flex;
   align-items: center;
-  gap: 20px;
-  font-size: 16px;
+  justify-content: space-between;
+  padding: 10px 18px;
+  gap: 16px;
+  background: rgba(13, 21, 39, 0.85);
+}
+
+.control-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .phase-badge {
-  font-weight: 700;
-  font-size: 18px;
+  font-weight: 800;
+  font-size: 15px;
   color: var(--accent-healthy);
 }
 
@@ -329,9 +384,10 @@ onUnmounted(() => {
 
 .clock-badge {
   font-family: var(--font-mono);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 13px;
 }
 
 .countdown-badge {
@@ -339,97 +395,133 @@ onUnmounted(() => {
   background: rgba(255, 40, 40, 0.15);
   border: 1px solid rgba(255, 40, 40, 0.4);
   color: #FF6B6B;
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 13px;
 }
 
 .dialogue-box {
-  background: rgba(0, 0, 0, 0.3);
-  border-left: 4px solid var(--accent-agent);
-  padding: 12px 16px;
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 14px;
+  border-radius: 6px;
+  border-left: 3px solid var(--accent-agent);
+  max-width: 600px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dialogue-title {
-  font-size: 11px;
-  color: var(--text-secondary);
+.dialogue-label {
+  font-size: 10px;
+  color: var(--accent-agent);
   letter-spacing: 1px;
-  margin-bottom: 4px;
 }
 
 .dialogue-text {
-  font-size: 15px;
+  font-size: 13px;
   font-style: italic;
   color: #E2E8F0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .keyboard-guide {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 11px;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 10px 16px;
-  border-radius: 8px;
+}
+
+.key-debug-badge {
+  background: rgba(255, 184, 0, 0.15);
+  border: 1px solid rgba(255, 184, 0, 0.4);
+  color: var(--accent-warning);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.ctrl-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #E2E8F0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  transition: all 0.2s ease;
+}
+
+.ctrl-btn:hover {
+  background: rgba(66, 133, 244, 0.2);
+  border-color: var(--accent-agent);
+  color: #FFF;
 }
 
 kbd {
   background: #1E293B;
   border: 1px solid #475569;
   border-radius: 4px;
-  padding: 2px 8px;
+  padding: 2px 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--accent-warning);
-  font-weight: 600;
-}
-
-.approval-card-preview {
-  background: rgba(255, 184, 0, 0.15);
-  border: 1px solid var(--accent-warning);
-  padding: 14px 20px;
-  border-radius: 8px;
-  color: #FFF;
-}
-
-.rejection-card-preview {
-  background: rgba(255, 40, 40, 0.2);
-  border: 1px solid var(--accent-critical);
-  padding: 12px 20px;
-  border-radius: 8px;
-  color: var(--accent-critical);
   font-weight: 700;
 }
 
-.money-hud {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 20px;
-  border-radius: 8px;
-  width: fit-content;
+/* 3. Three-Column Main Section */
+.war-room-columns {
+  display: grid;
+  grid-template-columns: 350px 1fr 420px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
-.money-hud.at-risk {
+/* Left Sidebar */
+.sidebar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.money-hud-card {
+  padding: 14px 18px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+
+.money-hud-card.at-risk {
   background: rgba(255, 40, 40, 0.15);
   border: 1px solid var(--accent-critical);
 }
 
-.money-hud.at-risk .money-value {
+.money-hud-card.at-risk .money-value {
   color: var(--accent-critical);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
 }
 
-.money-hud.recovered {
+.money-hud-card.recovered {
   background: rgba(0, 255, 128, 0.15);
   border: 1px solid var(--accent-healthy);
 }
 
-.money-hud.recovered .money-value {
+.money-hud-card.recovered .money-value {
   color: var(--accent-healthy);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
 }
 
@@ -440,31 +532,35 @@ kbd {
   color: var(--text-secondary);
 }
 
-.debug-grid {
-  display: grid;
-  grid-template-columns: 350px 1fr;
-  gap: 16px;
-}
-
-.nodes-column {
+.nodes-panel {
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-h3 {
-  font-size: 13px;
+.panel-header {
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 1px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nodes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .node-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   border-left: 4px solid var(--text-muted);
 }
@@ -479,24 +575,105 @@ h3 {
 .node-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.node-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.node-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.node-label {
+  font-size: 13px;
+  color: #FFF;
 }
 
 .node-role {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 
 .node-status-tag {
   font-size: 10px;
-  font-family: var(--font-mono);
   padding: 2px 6px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
 }
 
+/* Center Area (Open Globe Viewport) */
+.center-viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.approval-alert-card {
+  background: rgba(255, 184, 0, 0.2);
+  border: 1px solid var(--accent-warning);
+  padding: 16px 24px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(255, 184, 0, 0.3);
+  margin-top: 20px;
+  max-width: 560px;
+}
+
+.alert-icon {
+  font-size: 28px;
+}
+
+.alert-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--accent-warning);
+}
+
+.alert-body {
+  font-size: 12px;
+  color: #FFF;
+  margin-top: 4px;
+}
+
+.rejection-alert-card {
+  background: rgba(255, 40, 40, 0.25);
+  border: 1px solid var(--accent-critical);
+  padding: 14px 24px;
+  border-radius: 10px;
+  color: var(--accent-critical);
+  font-weight: 800;
+  font-size: 14px;
+  margin-top: 20px;
+}
+
+/* Right Sidebar */
+.sidebar-right {
+  overflow-y: auto;
+}
+
+.banner-pop-enter-active,
+.banner-pop-leave-active {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.banner-pop-enter-from,
+.banner-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.95);
+}
+
 @keyframes pulse {
-  from { opacity: 0.7; }
+  from { opacity: 0.6; }
   to { opacity: 1; }
 }
 </style>

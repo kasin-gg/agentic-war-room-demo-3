@@ -3,6 +3,21 @@
     <!-- Standalone deck.gl canvas container -->
     <div ref="mapContainer" class="deck-canvas-container"></div>
     
+    <!-- HTML Overlay Node Labels (100% immune to WebGL depth slicing or texture clipping) -->
+    <div 
+      v-for="label in projectedLabels" 
+      :key="label.id"
+      class="map-html-label font-mono"
+      :class="label.status"
+      :style="{ 
+        left: (label.x + 18) + 'px', 
+        top: (label.y - 12) + 'px' 
+      }"
+    >
+      <span class="label-dot"></span>
+      {{ label.label }}
+    </div>
+
     <!-- Basemap Mode Indicator Badge -->
     <div class="basemap-mode-badge glass-panel font-mono" :class="{ 'mode-3d': is3DTilesOn }">
       <span class="mode-dot"></span>
@@ -14,7 +29,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Deck } from '@deck.gl/core';
-import { GeoJsonLayer, ScatterplotLayer, ArcLayer, TextLayer, BitmapLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ScatterplotLayer, ArcLayer, BitmapLayer } from '@deck.gl/layers';
 import { TileLayer } from '@deck.gl/geo-layers';
 import gsap from 'gsap';
 import { USE_3D_TILES } from '../config/index.js';
@@ -41,6 +56,7 @@ const props = defineProps({
 
 const mapContainer = ref(null);
 const is3DTilesOn = computed(() => USE_3D_TILES.value);
+const projectedLabels = ref([]);
 
 let deckInstance = null;
 let animFrameId = null;
@@ -138,6 +154,28 @@ function updateCameraForPhase(phase) {
   }
 }
 
+// Project node 3D coordinates into screen pixel space for HTML label placement
+function updateProjectedLabels() {
+  if (!deckInstance) return;
+  const viewports = deckInstance.getViewports();
+  if (!viewports || !viewports.length) return;
+  const viewport = viewports[0];
+  if (!viewport) return;
+
+  const nodeData = Object.values(props.nodeStatuses);
+  projectedLabels.value = nodeData.map(n => {
+    const projected = viewport.project(n.coords);
+    if (!projected) return null;
+    return {
+      id: n.id,
+      label: n.label,
+      status: n.status || 'quiet',
+      x: projected[0],
+      y: projected[1]
+    };
+  }).filter(Boolean);
+}
+
 // Generate active layers for deck.gl
 function createDeckLayers() {
   const is3D = is3DTilesOn.value;
@@ -181,7 +219,7 @@ function createDeckLayers() {
     layers.push(landLayer);
   }
 
-  // 2. Node Status Data for Scatterplot & Labels
+  // 2. Node Status Data for Scatterplot
   const nodeData = Object.values(props.nodeStatuses).map(n => {
     const status = n.status || 'quiet';
     let color = COLORS.healthy;
@@ -227,23 +265,7 @@ function createDeckLayers() {
     pickable: true
   });
 
-  // 5. Node Labels
-  const labelLayer = new TextLayer({
-    id: 'node-labels',
-    data: nodeData,
-    getPosition: d => d.coords,
-    getText: d => d.label,
-    getSize: 14,
-    getColor: d => (d.status === 'grey' ? [148, 163, 184, 200] : [243, 244, 246, 255]),
-    getAngle: 0,
-    getTextAnchor: 'start',
-    getAlignmentBaseline: 'center',
-    getPixelOffset: [14, 0],
-    fontFamily: "'JetBrains Mono', monospace",
-    fontWeight: 'bold'
-  });
-
-  // 6. Arc Flow Visualization
+  // 5. Arc Flow Visualization
   const arcData = props.arcs.map((arc, i) => {
     let color = arc.color || COLORS.healthy;
     let strokeWidth = 3;
@@ -281,11 +303,11 @@ function createDeckLayers() {
     getTargetColor: d => d.color,
     getWidth: d => d.strokeWidth,
     widthMinPixels: 2,
-    getHeight: 0.35,
-    greatCircle: true
+    getHeight: 0.18,
+    greatCircle: false
   });
 
-  layers.push(arcLayer, haloLayer, nodeMarkerLayer, labelLayer);
+  layers.push(arcLayer, haloLayer, nodeMarkerLayer);
   return layers;
 }
 
@@ -295,6 +317,7 @@ function renderDeck() {
     viewState: { ...viewState.value },
     layers: createDeckLayers()
   });
+  updateProjectedLabels();
 }
 
 function animateLoop() {
@@ -313,7 +336,13 @@ function initDeck() {
     deckInstance = new Deck({
       parent: mapContainer.value,
       initialViewState: viewState.value,
-      controller: true,
+      controller: {
+        doubleClickZoom: true,
+        dragPan: true,
+        scrollZoom: true,
+        touchRotate: true,
+        keyboard: false
+      },
       onViewStateChange: ({ viewState: nextState }) => {
         viewState.value = nextState;
         renderDeck();
@@ -375,6 +404,66 @@ onUnmounted(() => {
 .deck-canvas-container {
   width: 100%;
   height: 100%;
+}
+
+/* Crisp HTML/DOM Glass Badges for Node Location Names */
+.map-html-label {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(10, 14, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #F3F4F6;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.label-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-healthy);
+}
+
+.map-html-label.warning {
+  border-color: var(--accent-warning);
+}
+.map-html-label.warning .label-dot {
+  background: var(--accent-warning);
+}
+
+.map-html-label.critical {
+  border-color: var(--accent-critical);
+  box-shadow: 0 0 16px rgba(255, 40, 40, 0.4);
+}
+.map-html-label.critical .label-dot {
+  background: var(--accent-critical);
+}
+
+.map-html-label.reroute {
+  border-color: var(--accent-agent);
+}
+.map-html-label.reroute .label-dot {
+  background: var(--accent-agent);
+}
+
+.map-html-label.grey {
+  color: #94A3B8;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.7);
+}
+.map-html-label.grey .label-dot {
+  background: #64748B;
 }
 
 .basemap-mode-badge {
