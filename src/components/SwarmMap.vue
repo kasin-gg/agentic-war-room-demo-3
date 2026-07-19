@@ -1,7 +1,7 @@
 <template>
   <div class="swarm-map-wrapper">
-    <!-- Standalone deck.gl canvas container -->
-    <div ref="mapContainer" class="deck-canvas-container"></div>
+    <!-- Standalone deck.gl canvas container (tabindex=-1 prevents map canvas stealing app key focus) -->
+    <div ref="mapContainer" class="deck-canvas-container" tabindex="-1"></div>
     
     <!-- HTML Overlay Node Labels (100% immune to WebGL depth slicing or texture clipping) -->
     <div 

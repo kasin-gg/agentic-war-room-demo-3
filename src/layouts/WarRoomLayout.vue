@@ -1,11 +1,17 @@
 <template>
-  <div class="war-room-container" :class="{ 'dawn-mode': isDawn }">
+  <div 
+    ref="containerRef"
+    tabindex="0"
+    class="war-room-container" 
+    :class="{ 'dawn-mode': isDawn }"
+    @click="ensureFocus"
+  >
     <slot />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 
 const props = defineProps({
   phase: {
@@ -14,8 +20,18 @@ const props = defineProps({
   }
 });
 
-// Dawn mode activates in Phase 5 (Resolution)
+const containerRef = ref(null);
 const isDawn = computed(() => props.phase === 5);
+
+function ensureFocus() {
+  if (containerRef.value) {
+    containerRef.value.focus();
+  }
+}
+
+onMounted(() => {
+  ensureFocus();
+});
 </script>
 
 <style>
@@ -65,6 +81,7 @@ body, html {
   background: var(--bg-dark);
   transition: background 1.5s ease-in-out;
   overflow: hidden;
+  outline: none;
 }
 
 .war-room-container.dawn-mode {

@@ -72,16 +72,16 @@
           <span class="key-debug-badge font-mono" title="Live physical keypress detection status">
             KEY: <strong>{{ lastKeyPressed }}</strong>
           </span>
-          <button class="ctrl-btn" @click="director.advancePhase()" title="Advance to next phase (Spacebar)">
+          <button tabindex="-1" class="ctrl-btn" @click="director.advancePhase()" title="Advance to next phase (Spacebar)">
             <kbd>SPACE</kbd> Next
           </button>
-          <button class="ctrl-btn" @click="director.approve()" title="Approve resolution (Y)">
+          <button tabindex="-1" class="ctrl-btn" @click="director.approve()" title="Approve resolution (Y)">
             <kbd>Y</kbd> Approve
           </button>
-          <button class="ctrl-btn" @click="director.reject()" title="Reject resolution (K)">
+          <button tabindex="-1" class="ctrl-btn" @click="director.reject()" title="Reject resolution (K)">
             <kbd>K</kbd> Reject
           </button>
-          <button class="ctrl-btn" @click="director.reset()" title="Reset to Phase 0 (R)">
+          <button tabindex="-1" class="ctrl-btn" @click="director.reset()" title="Reset to Phase 0 (R)">
             <kbd>R</kbd> Reset
           </button>
         </div>
@@ -179,43 +179,66 @@ const phaseNames = [
 
 function handleKeyDown(event) {
   const key = (event.key || '').toLowerCase();
-  const code = event.code || '';
+  const code = (event.code || '').toLowerCase();
   const keyCode = event.keyCode || event.which || 0;
 
-  lastKeyPressed.value = `'${event.key || 'key'}' (${code || keyCode})`;
+  lastKeyPressed.value = `'${event.key || 'key'}' (code: ${event.code || 'none'}, keyCode: ${keyCode})`;
+  console.log('[War Room Key Event]', { key, code, keyCode, type: event.type });
 
-  if (code === 'Space' || key === ' ' || key === 'spacebar' || keyCode === 32) {
-    if (event.preventDefault) event.preventDefault();
-    director.advancePhase();
-  } else if (key === 'y' || code === 'KeyY') {
-    if (event.preventDefault) event.preventDefault();
-    director.approve();
-  } else if (key === 'k' || code === 'KeyK') {
-    if (event.preventDefault) event.preventDefault();
-    director.reject();
-  } else if (key === 'r' || code === 'KeyR') {
-    if (event.preventDefault) event.preventDefault();
-    director.reset();
+  // Match Spacebar
+  if (code === 'space' || key === ' ' || key === 'spacebar' || keyCode === 32) {
+    if (event.preventDefault && event.type === 'keydown') event.preventDefault();
+    if (event.type === 'keydown') {
+      director.advancePhase();
+    }
+  }
+  // Match 'Y' (Approve)
+  else if (key === 'y' || code === 'keyy' || keyCode === 89) {
+    if (event.preventDefault && event.type === 'keydown') event.preventDefault();
+    if (event.type === 'keydown') {
+      director.approve();
+    }
+  }
+  // Match 'K' (Reject)
+  else if (key === 'k' || code === 'keyk' || keyCode === 75) {
+    if (event.preventDefault && event.type === 'keydown') event.preventDefault();
+    if (event.type === 'keydown') {
+      director.reject();
+    }
+  }
+  // Match 'R' (Reset)
+  else if (key === 'r' || code === 'keyr' || keyCode === 82) {
+    if (event.preventDefault && event.type === 'keydown') event.preventDefault();
+    if (event.type === 'keydown') {
+      director.reset();
+    }
   }
 }
 
 onMounted(() => {
-  window.onkeydown = handleKeyDown;
-  document.onkeydown = handleKeyDown;
-  window.addEventListener('keydown', handleKeyDown, true);
-  document.addEventListener('keydown', handleKeyDown, true);
+  const options = { capture: true, passive: false };
+  window.addEventListener('keydown', handleKeyDown, options);
+  window.addEventListener('keyup', handleKeyDown, options);
+  document.addEventListener('keydown', handleKeyDown, options);
+  document.addEventListener('keyup', handleKeyDown, options);
+  document.documentElement.addEventListener('keydown', handleKeyDown, options);
+  document.documentElement.addEventListener('keyup', handleKeyDown, options);
 
   if (document.body) {
+    document.body.addEventListener('keydown', handleKeyDown, options);
     document.body.tabIndex = -1;
     document.body.focus();
   }
 });
 
 onUnmounted(() => {
-  window.onkeydown = null;
-  document.onkeydown = null;
-  window.removeEventListener('keydown', handleKeyDown, true);
-  document.removeEventListener('keydown', handleKeyDown, true);
+  const options = { capture: true, passive: false };
+  window.removeEventListener('keydown', handleKeyDown, options);
+  window.removeEventListener('keyup', handleKeyDown, options);
+  document.removeEventListener('keydown', handleKeyDown, options);
+  document.removeEventListener('keyup', handleKeyDown, options);
+  document.documentElement.removeEventListener('keydown', handleKeyDown, options);
+  document.documentElement.removeEventListener('keyup', handleKeyDown, options);
 });
 </script>
 
